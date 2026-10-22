@@ -4,6 +4,17 @@
   const state = { initialized: false };
   window.__SecullumAudioWidget = state;
   const TIFLUX_SCRIPT_URL = "https://public-assets.tiflux.com/widget/tiflux-widget.iife.js";
+  const DEFAULT_WIDGET_CONFIG = {
+    token: "a65987eb-c584-4ffe-9237-a84c95852447",
+    xOffset: 24,
+    yOffset: 24,
+    // identify: {
+    //   name: "Nome do usuário",
+    //   email: "email@empresa.com",
+    //   phone: "11999990000",
+    //   externalId: "id-do-usuario",
+    // },
+  };
 
   const loadTifluxWidget = () => {
     if (window.TifluxWidget?.init) return Promise.resolve();
@@ -722,9 +733,13 @@
     let layoutStyle;
     try {
       const previous = window.TifluxWidgetConfig || {};
-      const token = options.token || previous.token;
-      if (!token) throw new Error("Informe data-token ou window.TifluxWidgetConfig.token.");
-      window.TifluxWidgetConfig = { xOffset: 24, yOffset: 24, ...previous, token };
+      const token = options.token || previous.token || DEFAULT_WIDGET_CONFIG.token;
+      window.TifluxWidgetConfig = {
+        ...DEFAULT_WIDGET_CONFIG,
+        ...previous,
+        token,
+        identify: previous.identify === undefined ? { ...DEFAULT_WIDGET_CONFIG.identify } : previous.identify,
+      };
       window.SECULLUM_IA_API_BASE_URL = options.apiBase || window.SECULLUM_IA_API_BASE_URL || "https://widgetserverless.vercel.app";
       if (options.open === "true") {
         try { localStorage.setItem(`@TifluxWidget:IsOpen:${token}`, "true"); } catch {}
