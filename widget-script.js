@@ -5,7 +5,7 @@
   window.__SecullumAudioWidget = state;
   const TIFLUX_SCRIPT_URL = "https://public-assets.tiflux.com/widget/tiflux-widget.iife.js";
   // Padrão dos recursos de áudio e transcrição; data-audio="true"/"false" sobrescreve este valor.
-  const DEFAULT_AUDIO_ENABLED = false;
+  const DEFAULT_AUDIO_ENABLED = true;
   const DEFAULT_WIDGET_CONFIG = {
     token: "4dbbca22-ea44-4171-a4c7-23b3031a77d4",
     xOffset: 24,
