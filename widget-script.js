@@ -5,7 +5,7 @@
   window.__SecullumAudioWidget = state;
   const TIFLUX_SCRIPT_URL = "https://public-assets.tiflux.com/widget/tiflux-widget.iife.js";
   const DEFAULT_WIDGET_CONFIG = {
-    token: "a65987eb-c584-4ffe-9237-a84c95852447",
+    token: "4dbbca22-ea44-4171-a4c7-23b3031a77d4",
     xOffset: 24,
     yOffset: 24,
     // identify: {
