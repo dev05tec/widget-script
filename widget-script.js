@@ -4,6 +4,8 @@
   const state = { initialized: false };
   window.__SecullumAudioWidget = state;
   const TIFLUX_SCRIPT_URL = "https://public-assets.tiflux.com/widget/tiflux-widget.iife.js";
+  // Padrão dos recursos de áudio e transcrição; data-audio="true"/"false" sobrescreve este valor.
+  const DEFAULT_AUDIO_ENABLED = false;
   const DEFAULT_WIDGET_CONFIG = {
     token: "4dbbca22-ea44-4171-a4c7-23b3031a77d4",
     xOffset: 24,
@@ -732,8 +734,11 @@
     }, 100);
   };
 
-  // Use data-audio="false" no script para iniciar o widget sem os recursos de áudio.
-  const initialize = async (enableAudio = options.audio !== "false") => {
+  const initialize = async (
+    enableAudio = options.audio === "true" ? true
+      : options.audio === "false" ? false
+      : DEFAULT_AUDIO_ENABLED
+  ) => {
     let layoutStyle;
     try {
       const previous = window.TifluxWidgetConfig || {};
