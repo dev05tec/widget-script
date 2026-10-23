@@ -362,7 +362,7 @@
             ...(user.email ? { visitor_email: user.email } : {}),
             ...(user.phone ? { visitor_phone: user.phone } : {}),
             type: "text",
-            body: `${TRANSCRIPT_MESSAGE_PREFIX}\nArquivo: ${audio.file.name}\n\n${audio.transcript}`,
+            body: `${TRANSCRIPT_MESSAGE_PREFIX}\nTranscrição do áudio enviado pelo cliente.\nArquivo: ${audio.file.name}\n\n${audio.transcript}`,
           }),
         });
         if (!response.ok) throw new Error(`Não foi possível enviar a transcrição (HTTP ${response.status}).`);
