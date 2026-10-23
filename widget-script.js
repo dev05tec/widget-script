@@ -118,6 +118,7 @@
     const transcriptionApiBase = window.SECULLUM_IA_API_BASE_URL.replace(/\/$/, "");
     const transcriptionEndpoint = `${transcriptionApiBase}/api/transcribe`;
     const MAX_AUDIO_BYTES = 4 * 1024 * 1024;
+    const TRANSCRIPT_SEND_DELAY_MS = 2000;
     let recorder;
     let recordingStream;
     let recordedChunks = [];
@@ -349,6 +350,8 @@
       if (audio.transcriptSent || !audio.transcript) return;
       if (audio.transcriptRequest) return audio.transcriptRequest;
       const request = (async () => {
+        // Aguarda um pouco após o áudio aparecer no histórico antes de enviar a transcrição.
+        await new Promise((resolve) => setTimeout(resolve, TRANSCRIPT_SEND_DELAY_MS));
         const { token, session } = audio.deliveryContext || getWidgetDeliveryContext();
         const user = session.user_data || {};
         const response = await fetch(`https://app.tiflux.com/widget/${encodeURIComponent(token)}/message`, {
@@ -729,7 +732,8 @@
     }, 100);
   };
 
-  const initialize = async () => {
+  // Use data-audio="false" no script para iniciar o widget sem os recursos de áudio.
+  const initialize = async (enableAudio = options.audio !== "false") => {
     let layoutStyle;
     try {
       const previous = window.TifluxWidgetConfig || {};
@@ -755,7 +759,7 @@
         window.TifluxWidget.init(window.TifluxWidgetConfig);
       }
       if (options.layout === "expanded") initializeExpandedLayout();
-      initializeAudioFeatures();
+      if (enableAudio) initializeAudioFeatures();
       state.initialized = true;
     } catch (error) {
       layoutStyle?.remove();
