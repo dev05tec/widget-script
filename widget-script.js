@@ -9,6 +9,19 @@
   // um objeto vazio como alternativa e `...` copia os atributos para um objeto próprio.
   const options = { ...(document.currentScript?.dataset || {}) };
   const state = { initialized: false };
+  window.__SecullumCommentBodies ||= new Set();
+  window.__SecullumIsCommentPreview = (conversation) => {
+    if (conversation?.last_message_type === "comment" || conversation?.last_message?.type === "comment") return true;
+    const lastMessage = conversation?.last_message;
+    if (window.__SecullumCommentBodies.has(lastMessage)) return true;
+    if (typeof lastMessage === "string") {
+      try {
+        const parsed = JSON.parse(lastMessage);
+        return parsed?.type === "comment" || window.__SecullumCommentBodies.has(parsed?.body);
+      } catch {}
+    }
+    return false;
+  };
   window.__SecullumWidget = state;
   const TIFLUX_SCRIPT_URL = "https://public-assets.tiflux.com/widget/tiflux-widget.iife.js";
   // Snapshot verificado em 23/10/2026. Atualize somente após revisar a nova distribuição.
@@ -26,70 +39,77 @@
     // },
   };
 
-  // Carrega a distribuição oficial e exige o hash de integridade (SRI) esperado.
-  // Também valida scripts existentes e limita a espera a 30 segundos.
-  // Retorna uma Promise: quem chama pode usar `await` e só inicializar o chat depois que
-  // o script terminar. A Promise termina resolvida (sucesso) ou rejeitada (erro/timeout).
+  // Baixa a distribuição oficial com SRI, injeta os filtros necessários no código
+  // recebido e executa o resultado. O bundle original permanece intocado.
+  // Retorna uma Promise resolvida somente quando a API pública está disponível.
   const loadTifluxWidget = () => {
-    // Procura primeiro a URL exata; assim o script desta integração e a API global
-    // podem ser reaproveitados sem baixar nem executar o mesmo widget de novo.
+    // Não reutilize uma instância carregada fora do injetor: ela já executou sem
+    // as mudanças que este arquivo aplica ao bundle baixado.
     const installed = document.querySelector(`script[src="${TIFLUX_SCRIPT_URL}"]`);
-    if (window.TifluxWidget?.init) {
-      // Uma API global preexistente só é confiável quando veio da tag esperada,
-      // com SRI e CORS anônimo. Sem essa correspondência, abortamos a inicialização.
-      if (!installed || installed.integrity !== TIFLUX_SCRIPT_INTEGRITY || installed.crossOrigin !== "anonymous") {
-        return Promise.reject(new Error("O widget já carregado não possui a integridade esperada."));
-      }
-      return Promise.resolve();
+    if (window.TifluxWidget?.init || installed) {
+      // Um bundle já carregado não pode receber as injeções; evite exibir a conversa
+      // sem os filtros só porque outra tag carregou o widget antes deste injetor.
+      return Promise.reject(new Error("O widget oficial já foi carregado sem as injeções. Remova a tag direta e recarregue a página."));
     }
+    return (async () => {
+      const response = await fetch(TIFLUX_SCRIPT_URL, {
+        mode: "cors",
+        credentials: "omit",
+        referrerPolicy: "no-referrer",
+        integrity: TIFLUX_SCRIPT_INTEGRITY,
+      });
+      if (!response.ok) throw new Error(`Falha ao baixar o widget do Tiflux (${response.status}).`);
+
+      let source = await response.text();
+      // O hash fixa a versão do bundle e estes anchors validam a estrutura esperada.
+      // Falha fechado se a versão remota mudar e exigir revisão da injeção.
+      const injectOnce = (input, anchor, injected) => {
+        const index = input.indexOf(anchor);
+        if (index < 0 || input.indexOf(anchor, index + anchor.length) >= 0) {
+          throw new Error("A distribuição do widget mudou; os filtros de comentários precisam ser revisados.");
+        }
+        return input.slice(0, index) + injected + input.slice(index + anchor.length);
+      };
+      source = injectOnce(
+        source,
+        'Pe=({messages:e,loading:t=!1,loadingMore:n=!1,hasMoreMessages:r=!1,isTyping:i=!1,primaryColor:o,onLoadMore:a,onSelectOption:s,onRetryMessage:l,footer:u,optionsLocked:c=!1})=>{const',
+        'Pe=({messages:e,loading:t=!1,loadingMore:n=!1,hasMoreMessages:r=!1,isTyping:i=!1,primaryColor:o,onLoadMore:a,onSelectOption:s,onRetryMessage:l,footer:u,optionsLocked:c=!1})=>{e=e.filter(e=>{if("comment"!==e.type)return!0;"string"==typeof e.body&&window.__SecullumCommentBodies.add(e.body);return!1});const',
+      );
+      source = injectOnce(
+        source,
+        '}(e.last_message||""));return',
+        '}((window.__SecullumIsCommentPreview(e)?"":e.last_message)||""));return',
+      );
+
       return new Promise((resolve, reject) => {
-      let loader = document.querySelector(`script[src="${TIFLUX_SCRIPT_URL}"]`);
-      const existing = Boolean(loader);
-      // Uma tag encontrada sem os atributos de segurança não será corrigida às cegas:
-      // ela pode já estar em carregamento ou representar uma distribuição diferente.
-      if (existing && (loader.integrity !== TIFLUX_SCRIPT_INTEGRITY || loader.crossOrigin !== "anonymous")) {
-        reject(new Error("O script existente do Tiflux não possui a integridade esperada."));
-        return;
-      }
-      if (!loader) {
-        loader = document.createElement("script");
-        // SRI faz o navegador comparar o arquivo recebido com o hash aprovado.
-        loader.integrity = TIFLUX_SCRIPT_INTEGRITY;
-        loader.crossOrigin = "anonymous";
-        loader.referrerPolicy = "no-referrer";
-        loader.src = TIFLUX_SCRIPT_URL;
+        const loader = document.createElement("script");
+        const objectUrl = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+        loader.src = objectUrl;
         loader.async = true;
-      }
-      // `resolve` e `reject` são funções fornecidas pelo construtor Promise para concluir
-      // a operação assíncrona. Os ouvintes `{ once: true }` também se removem após o evento.
-      const cleanUp = () => {
-        // Remove temporizador e ouvintes após qualquer resultado para evitar
-        // que um evento atrasado tente resolver/rejeitar a mesma operação novamente.
-        clearTimeout(timeout);
-        loader.removeEventListener("load", onLoad);
-        loader.removeEventListener("error", onError);
-      };
-      const onLoad = () => {
-        cleanUp();
-        // O evento load sozinho não garante que a biblioteca expôs sua API pública.
-        if (window.TifluxWidget?.init) resolve();
-        else reject(new Error("O script do Tiflux não inicializou o widget."));
-      };
-      const onError = () => {
-        cleanUp();
-        // Só remove uma tag criada por esta função; preserva tags pertencentes à página.
-        if (!existing) loader.remove();
-        reject(new Error("Não foi possível carregar o script do Tiflux."));
-      };
-      const timeout = setTimeout(() => {
-        cleanUp();
-        if (!existing) loader.remove();
-        reject(new Error("O carregamento do widget excedeu 30 segundos."));
-      }, 30000);
-      loader.addEventListener("load", onLoad, { once: true });
-      loader.addEventListener("error", onError, { once: true });
-      if (!existing) document.head.appendChild(loader);
-    });
+        loader.dataset.secullumInjected = "true";
+        const timeout = setTimeout(() => finish(new Error("O carregamento do widget excedeu 30 segundos.")), 30000);
+        const finish = (error) => {
+          clearTimeout(timeout);
+          loader.removeEventListener("load", onLoad);
+          loader.removeEventListener("error", onError);
+          URL.revokeObjectURL(objectUrl);
+          if (error) {
+            loader.remove();
+            reject(error);
+          } else if (window.TifluxWidget?.init) {
+            resolve();
+          } else {
+            loader.remove();
+            reject(new Error("O script do Tiflux não inicializou o widget."));
+          }
+        };
+        const onLoad = () => finish();
+        const onError = () => finish(new Error("Não foi possível executar o widget injetado."));
+        loader.addEventListener("load", onLoad, { once: true });
+        loader.addEventListener("error", onError, { once: true });
+        document.head.appendChild(loader);
+      });
+    })();
   };
 
   // Aguarda o DOM interno do widget (ShadowRoot) para aplicar o layout expandido:
