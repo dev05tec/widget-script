@@ -9,19 +9,6 @@
   // um objeto vazio como alternativa e `...` copia os atributos para um objeto próprio.
   const options = { ...(document.currentScript?.dataset || {}) };
   const state = { initialized: false };
-  window.__SecullumCommentBodies ||= new Set();
-  window.__SecullumIsCommentPreview = (conversation) => {
-    if (conversation?.last_message_type === "comment" || conversation?.last_message?.type === "comment") return true;
-    const lastMessage = conversation?.last_message;
-    if (window.__SecullumCommentBodies.has(lastMessage)) return true;
-    if (typeof lastMessage === "string") {
-      try {
-        const parsed = JSON.parse(lastMessage);
-        return parsed?.type === "comment" || window.__SecullumCommentBodies.has(parsed?.body);
-      } catch {}
-    }
-    return false;
-  };
   window.__SecullumWidget = state;
   const TIFLUX_SCRIPT_URL = "https://public-assets.tiflux.com/widget/tiflux-widget.iife.js";
   // Hash reportado pelo navegador para a distribuição servida em produção (04/11/2026).
@@ -39,17 +26,12 @@
     // },
   };
 
-  // Baixa a distribuição oficial com SRI, injeta os filtros necessários no código
-  // recebido e executa o resultado. O bundle original permanece intocado.
+  // Baixa a distribuição oficial com SRI e executa o código recebido.
   // Retorna uma Promise resolvida somente quando a API pública está disponível.
   const loadTifluxWidget = () => {
-    // Não reutilize uma instância carregada fora do injetor: ela já executou sem
-    // as mudanças que este arquivo aplica ao bundle baixado.
     const installed = document.querySelector(`script[src="${TIFLUX_SCRIPT_URL}"]`);
     if (window.TifluxWidget?.init || installed) {
-      // Um bundle já carregado não pode receber as injeções; evite exibir a conversa
-      // sem os filtros só porque outra tag carregou o widget antes deste injetor.
-      return Promise.reject(new Error("O widget oficial já foi carregado sem as injeções. Remova a tag direta e recarregue a página."));
+      return Promise.reject(new Error("O widget oficial já foi carregado. Remova a tag duplicada e recarregue a página."));
     }
     return (async () => {
       const response = await fetch(TIFLUX_SCRIPT_URL, {
@@ -60,16 +42,8 @@
       });
       if (!response.ok) throw new Error(`Falha ao baixar o widget do Tiflux (${response.status}).`);
 
-      let source = await response.text();
-      // O hash fixa a versão do bundle e estes anchors validam a estrutura esperada.
-      // Falha fechado se a versão remota mudar e exigir revisão da injeção.
-      const injectOnce = (input, anchor, injected) => {
-        const index = input.indexOf(anchor);
-        if (index < 0 || input.indexOf(anchor, index + anchor.length) >= 0) {
-          throw new Error("A distribuição do widget mudou; os filtros de comentários precisam ser revisados.");
-        }
-        return input.slice(0, index) + injected + input.slice(index + anchor.length);
-      };
+      const source = await response.text();
+      /* Filtros de comentários desativados: o bundle oficial é executado sem alterações.
       source = injectOnce(
         source,
         'Pe=({messages:e,loading:t=!1,loadingMore:n=!1,hasMoreMessages:r=!1,isTyping:i=!1,primaryColor:o,onLoadMore:a,onSelectOption:s,onRetryMessage:l,footer:u,optionsLocked:c=!1})=>{const',
@@ -80,6 +54,7 @@
         '}(e.last_message||""));return',
         '}((window.__SecullumIsCommentPreview(e)?"":e.last_message)||""));return',
       );
+      */
 
       return new Promise((resolve, reject) => {
         const loader = document.createElement("script");
