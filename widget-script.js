@@ -24,8 +24,8 @@
   };
   window.__SecullumWidget = state;
   const TIFLUX_SCRIPT_URL = "https://public-assets.tiflux.com/widget/tiflux-widget.iife.js";
-  // Snapshot verificado em 23/10/2026. Atualize somente após revisar a nova distribuição.
-  const TIFLUX_SCRIPT_INTEGRITY = "sha384-EAvsVChq1qYU17TR1lRMIoVxNcb7EgIrROF0KUfFkmQpgs0bcnFvGOmICpc9Nium";
+  // Hash reportado pelo navegador para a distribuição servida em produção (04/11/2026).
+  const TIFLUX_SCRIPT_INTEGRITY = "sha384-RrqKL9PUFxorCKho+JCvJfF3XaZ7c5n22JLuA9pZJTcpGB9ija91jx3lv8Sjfml1";
   const DEFAULT_WIDGET_CONFIG = {
     // Valores de posicionamento e autenticação usados quando a página não os sobrescreve.
     token: "4dbbca22-ea44-4171-a4c7-23b3031a77d4",
