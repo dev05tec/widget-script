@@ -37,40 +37,98 @@
     // },
   };
 
-  // Baixa a distribuição oficial com SRI, injeta os filtros de comentários e executa.
+  // Baixa a distribuição oficial, aplica os filtros e ações locais e executa.
   // Retorna uma Promise resolvida somente quando a API pública está disponível.
   const loadTifluxWidget = () => {
     const installed = document.querySelector(`script[src="${TIFLUX_SCRIPT_URL}"]`);
     if (window.TifluxWidget?.init || installed) {
       return Promise.reject(new Error("O widget oficial já foi carregado. Remova a tag duplicada e recarregue a página."));
     }
-    return (async () => {
-      const response = await fetch(TIFLUX_SCRIPT_URL, {
-        mode: "cors",
-        credentials: "omit",
-        referrerPolicy: "no-referrer",
+    const loadVanillaWidget = (reason) => {
+      console.warn("[SecullumWidget] As personalizações locais falharam; carregando o widget vanilla do Tiflux.", reason);
+      return new Promise((resolve, reject) => {
+        const loader = document.createElement("script");
+        loader.src = TIFLUX_SCRIPT_URL;
+        loader.async = true;
+        loader.dataset.secullumVanilla = "true";
+        const finish = (error) => {
+          clearTimeout(timeout);
+          loader.removeEventListener("load", onLoad);
+          loader.removeEventListener("error", onError);
+          if (error) {
+            loader.remove();
+            reject(error);
+          } else if (window.TifluxWidget?.init) {
+            resolve();
+          } else {
+            loader.remove();
+            reject(new Error("O script vanilla do Tiflux não inicializou o widget."));
+          }
+        };
+        const onLoad = () => finish();
+        const onError = () => finish(new Error("Não foi possível carregar o script vanilla do Tiflux."));
+        const timeout = setTimeout(() => finish(new Error("O carregamento vanilla do widget excedeu 30 segundos.")), 30000);
+        loader.addEventListener("load", onLoad, { once: true });
+        loader.addEventListener("error", onError, { once: true });
+        document.head.appendChild(loader);
       });
-      if (!response.ok) throw new Error(`Falha ao baixar o widget do Tiflux (${response.status}).`);
+    };
+    return (async () => {
+      let response;
+      try {
+        response = await fetch(TIFLUX_SCRIPT_URL, {
+          mode: "cors",
+          credentials: "omit",
+          referrerPolicy: "no-referrer",
+        });
+        if (!response.ok) throw new Error(`Falha ao baixar o widget do Tiflux (${response.status}).`);
+      } catch (error) {
+        return loadVanillaWidget(error);
+      }
 
-      let source = await response.text();
-      // Confere os anchors antes de alterar o bundle: falha fechado se ele mudar.
+      let source;
+      try {
+        source = await response.text();
+      } catch (error) {
+        return loadVanillaWidget(error);
+      }
+      // Confere os anchors; se a distribuição mudar, o loader usa o script vanilla.
       const injectOnce = (input, anchor, injected) => {
         const index = input.indexOf(anchor);
         if (index < 0 || input.indexOf(anchor, index + anchor.length) >= 0) {
-          throw new Error("A distribuição do widget mudou; os filtros de comentários precisam ser revisados.");
+          throw new Error("A distribuição do widget mudou; as personalizações locais precisam ser revisadas.");
         }
         return input.slice(0, index) + injected + input.slice(index + anchor.length);
       };
+      try {
       source = injectOnce(
         source,
         'Le=({messages:e,loading:t=!1,loadingMore:n=!1,hasMoreMessages:r=!1,isTyping:i=!1,primaryColor:o,onLoadMore:a,onSelectOption:s,onRetryMessage:l,footer:c,optionsLocked:u=!1})=>{const',
-        'Le=({messages:e,loading:t=!1,loadingMore:n=!1,hasMoreMessages:r=!1,isTyping:i=!1,primaryColor:o,onLoadMore:a,onSelectOption:s,onRetryMessage:l,footer:c,optionsLocked:u=!1})=>{e=e.filter(e=>{if("comment"!==e.type)return!0;"string"==typeof e.body&&window.__SecullumCommentBodies.add(e.body);return!1});const',
+        'Le=({messages:e,loading:t=!1,loadingMore:n=!1,hasMoreMessages:r=!1,isTyping:i=!1,primaryColor:o,onLoadMore:a,onSelectOption:s,onRetryMessage:l,footer:c,optionsLocked:u=!1,onSendMessage:z})=>{e=e.filter(e=>{if("comment"!==e.type)return!0;"string"==typeof e.body&&window.__SecullumCommentBodies.add(e.body);return!1});e=e.flatMap(e=>{if(!e.out&&"string"==typeof e.body){const t=e.body.indexOf("Olá, a assistente virtual me orientou a enviar esta mensagem para detalhar " + "o caso.");if(t>=0){const n=e.body.slice(0,t),r={...e,type:"secullum-agent-copy",body:e.body.slice(t),id:(e.id||e._id||"secullum-agent-copy")+"-copy"};return n.trim()?[{...e,body:n},r]:[r]}}return[e]});const',
+      );
+      source = injectOnce(
+        source,
+        'e.map((e,t)=>(0,w.jsx)(Se,{message:e,primaryColor:o,onSelectOption:s,onRetry:l,optionsEnabled:t===v}',
+        'e.map((e,t)=>(0,w.jsx)(Se,{message:e,primaryColor:o,onSelectOption:s,onRetry:l,onSendToAgent:z,optionsEnabled:t===v}',
+      );
+      source = injectOnce(
+        source,
+        'Se=({message:e,primaryColor:t,onSelectOption:n,onRetry:r,optionsEnabled:i=!0})=>{const{t:o}=S(),',
+        'Se=({message:e,primaryColor:t,onSelectOption:n,onRetry:r,onSendToAgent:__secullumSend,optionsEnabled:i=!0})=>{if("secullum-agent-copy"===e.type){const __secullumText=e.body,__secullumButtonStyle={padding:"7px 10px",border:"1px solid #d1d5db",borderRadius:"6px",background:"white",color:"#293239",fontSize:"13px",fontWeight:500,fontFamily:"Be Vietnam Pro, sans-serif",lineHeight:"18px",cursor:"pointer"},__secullumSendButtonStyle={...__secullumButtonStyle,background:t,color:"white",borderColor:t};return(0,w.jsxs)("div",{style:{display:"flex",justifyContent:"flex-start",marginBottom:"12px"},children:[(0,w.jsx)("div",{style:{maxWidth:"75%",border:"1px dashed #cbd5e1",borderRadius:8,borderTopLeftRadius:2,padding:"12px",backgroundColor:"#f8fafc",color:"#293239",fontSize:"14px",lineHeight:"20px",whiteSpace:"pre-wrap",wordBreak:"break-word"},children:[(0,w.jsx)("div",{style:{fontSize:"12px",fontWeight:600,color:"#475569",marginBottom:"6px"},children:"Mensagem para enviar"}),(0,w.jsx)("div",{children:__secullumText}),(0,w.jsxs)("div",{style:{display:"flex",gap:"8px",marginTop:"10px",flexWrap:"wrap"},children:[(0,w.jsx)("button",{type:"button",style:__secullumButtonStyle,onClick:async e=>{const button=e.currentTarget;try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(__secullumText);else{const area=document.createElement("textarea");area.value=__secullumText;area.style.position="fixed";area.style.opacity="0";document.body.appendChild(area);area.select();try{if(!document.execCommand("copy"))throw Error("Clipboard indisponível")}finally{area.remove()}}button.textContent="Copiado";setTimeout(()=>{button.textContent="Copiar texto"},1500)}catch(error){console.error("[SecullumWidget] Falha ao copiar mensagem",error)}},children:"Copiar texto"}),(0,w.jsx)("button",{type:"button",style:__secullumSendButtonStyle,onClick:async e=>{const button=e.currentTarget;button.disabled=!0;button.textContent="Enviando...";try{if(typeof __secullumSend!=="function")throw Error("Envio indisponível");await __secullumSend({message:__secullumText});button.textContent="Enviado"}catch(error){console.error("[SecullumWidget] Falha ao enviar mensagem",error);button.disabled=!1;button.textContent="Enviar para atendente"}},children:"Enviar para atendente"})]})]})]})}const{t:o}=S(),',
+      );
+      source = injectOnce(
+        source,
+        'Le,{messages:Ze,loading:a,loadingMore:s,hasMoreMessages:l,onLoadMore:c,isTyping:d,primaryColor:n.primary_color,onRetryMessage:v,onSelectOption:',
+        'Le,{messages:Ze,loading:a,loadingMore:s,hasMoreMessages:l,onLoadMore:c,isTyping:d,primaryColor:n.primary_color,onRetryMessage:v,onSendMessage:b,onSelectOption:',
       );
       source = injectOnce(
         source,
         '}(e.last_message||""));return',
         '}((window.__SecullumIsCommentPreview(e)?"":e.last_message)||""));return',
       );
+      } catch (error) {
+        return loadVanillaWidget(error);
+      }
 
       return new Promise((resolve, reject) => {
         const loader = document.createElement("script");
@@ -99,7 +157,7 @@
         loader.addEventListener("load", onLoad, { once: true });
         loader.addEventListener("error", onError, { once: true });
         document.head.appendChild(loader);
-      });
+      }).catch((error) => loadVanillaWidget(error));
     })();
   };
 
