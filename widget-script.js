@@ -9,10 +9,21 @@
   // um objeto vazio como alternativa e `...` copia os atributos para um objeto próprio.
   const options = { ...(document.currentScript?.dataset || {}) };
   const state = { initialized: false };
+  window.__SecullumCommentBodies ||= new Set();
+  window.__SecullumIsCommentPreview = (conversation) => {
+    if (conversation?.last_message_type === "comment" || conversation?.last_message?.type === "comment") return true;
+    const lastMessage = conversation?.last_message;
+    if (window.__SecullumCommentBodies.has(lastMessage)) return true;
+    if (typeof lastMessage === "string") {
+      try {
+        const parsed = JSON.parse(lastMessage);
+        return parsed?.type === "comment" || window.__SecullumCommentBodies.has(parsed?.body);
+      } catch {}
+    }
+    return false;
+  };
   window.__SecullumWidget = state;
   const TIFLUX_SCRIPT_URL = "https://public-assets.tiflux.com/widget/tiflux-widget.iife.js";
-  // Hash reportado pelo navegador para a distribuição servida em produção (04/11/2026).
-  const TIFLUX_SCRIPT_INTEGRITY = "sha384-RrqKL9PUFxorCKho+JCvJfF3XaZ7c5n22JLuA9pZJTcpGB9ija91jx3lv8Sjfml1";
   const DEFAULT_WIDGET_CONFIG = {
     // Valores de posicionamento e autenticação usados quando a página não os sobrescreve.
     token: "4dbbca22-ea44-4171-a4c7-23b3031a77d4",
@@ -26,7 +37,7 @@
     // },
   };
 
-  // Baixa a distribuição oficial com SRI e executa o código recebido.
+  // Baixa a distribuição oficial com SRI, injeta os filtros de comentários e executa.
   // Retorna uma Promise resolvida somente quando a API pública está disponível.
   const loadTifluxWidget = () => {
     const installed = document.querySelector(`script[src="${TIFLUX_SCRIPT_URL}"]`);
@@ -38,23 +49,28 @@
         mode: "cors",
         credentials: "omit",
         referrerPolicy: "no-referrer",
-        integrity: TIFLUX_SCRIPT_INTEGRITY,
       });
       if (!response.ok) throw new Error(`Falha ao baixar o widget do Tiflux (${response.status}).`);
 
-      const source = await response.text();
-      /* Filtros de comentários desativados: o bundle oficial é executado sem alterações.
+      let source = await response.text();
+      // Confere os anchors antes de alterar o bundle: falha fechado se ele mudar.
+      const injectOnce = (input, anchor, injected) => {
+        const index = input.indexOf(anchor);
+        if (index < 0 || input.indexOf(anchor, index + anchor.length) >= 0) {
+          throw new Error("A distribuição do widget mudou; os filtros de comentários precisam ser revisados.");
+        }
+        return input.slice(0, index) + injected + input.slice(index + anchor.length);
+      };
       source = injectOnce(
         source,
-        'Pe=({messages:e,loading:t=!1,loadingMore:n=!1,hasMoreMessages:r=!1,isTyping:i=!1,primaryColor:o,onLoadMore:a,onSelectOption:s,onRetryMessage:l,footer:u,optionsLocked:c=!1})=>{const',
-        'Pe=({messages:e,loading:t=!1,loadingMore:n=!1,hasMoreMessages:r=!1,isTyping:i=!1,primaryColor:o,onLoadMore:a,onSelectOption:s,onRetryMessage:l,footer:u,optionsLocked:c=!1})=>{e=e.filter(e=>{if("comment"!==e.type)return!0;"string"==typeof e.body&&window.__SecullumCommentBodies.add(e.body);return!1});const',
+        'Le=({messages:e,loading:t=!1,loadingMore:n=!1,hasMoreMessages:r=!1,isTyping:i=!1,primaryColor:o,onLoadMore:a,onSelectOption:s,onRetryMessage:l,footer:c,optionsLocked:u=!1})=>{const',
+        'Le=({messages:e,loading:t=!1,loadingMore:n=!1,hasMoreMessages:r=!1,isTyping:i=!1,primaryColor:o,onLoadMore:a,onSelectOption:s,onRetryMessage:l,footer:c,optionsLocked:u=!1})=>{e=e.filter(e=>{if("comment"!==e.type)return!0;"string"==typeof e.body&&window.__SecullumCommentBodies.add(e.body);return!1});const',
       );
       source = injectOnce(
         source,
         '}(e.last_message||""));return',
         '}((window.__SecullumIsCommentPreview(e)?"":e.last_message)||""));return',
       );
-      */
 
       return new Promise((resolve, reject) => {
         const loader = document.createElement("script");
