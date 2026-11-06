@@ -9,6 +9,68 @@
   // um objeto vazio como alternativa e `...` copia os atributos para um objeto próprio.
   const options = { ...(document.currentScript?.dataset || {}) };
   const state = { initialized: false };
+  // A fila acompanha mensagens renderizadas, inclusive as recebidas por eventos.
+  // Só o clique arma a fila; mensagens já presentes nesse momento são histórico.
+  const agentQueues = new Map();
+  const AGENT_REPLY_DELAY_MS = 2000;
+  const messageKey = (message) => String(message.id || message._id || `${message.created_at}|${message.body}`);
+  const queueKey = (message) => `${message.chat_id || "current"}|${messageKey(message)}`;
+  const sentStorageKey = (message) => `@SecullumWidget:Sent:${options.token || window.TifluxWidgetConfig?.token || DEFAULT_WIDGET_CONFIG.token}:${queueKey(message)}`;
+  const wasSent = (message) => {
+    if (agentQueues.get(queueKey(message))?.status === "sent") return true;
+    try { return window.localStorage.getItem(sentStorageKey(message)) === "sent"; } catch { return false; }
+  };
+  window.__SecullumAgentStatus = (message) => wasSent(message) ? "sent" : agentQueues.get(queueKey(message))?.status || "idle";
+  window.__SecullumQueueAgentMessage = (message) => {
+    const queue = agentQueues.get(queueKey(message));
+    if (!queue || queue.status !== "idle" || wasSent(message)) return;
+    queue.seen = new Set(queue.messages.map(messageKey));
+    queue.since = Math.max(Date.parse(message.created_at) || 0, ...queue.messages.map((item) => Date.parse(item.created_at) || 0));
+    queue.status = "waiting";
+    queue.refresh?.();
+  };
+  window.__SecullumObserveAgentMessages = (messages, send, refresh) => {
+    for (const copy of messages.filter((message) => message.type === "secullum-agent-copy")) {
+      const key = queueKey(copy);
+      let queue = agentQueues.get(key);
+      if (!queue) {
+        queue = { status: wasSent(copy) ? "sent" : "idle", seen: new Set(messages.map(messageKey)) };
+        agentQueues.set(key, queue);
+      }
+      queue.messages = messages;
+      queue.refresh = refresh;
+      const arrived = messages.filter((message) => !queue.seen.has(messageKey(message)));
+      messages.forEach((message) => queue.seen.add(messageKey(message)));
+      const agentArrived = arrived.some((message) => {
+        const name = typeof message.name === "string" ? message.name.trim() : "";
+        return !message.out && message.type !== "comment" && message.type !== "secullum-agent-copy"
+          && message.ia_ai !== true && name && name.toLocaleLowerCase("pt-BR") !== "assistente virtual"
+          && (!copy.chat_id || !message.chat_id || copy.chat_id === message.chat_id)
+          && Date.parse(message.created_at) >= queue.since;
+      });
+      if (queue.status !== "waiting" || wasSent(copy) || !agentArrived || typeof send !== "function") continue;
+      queue.status = "scheduled";
+      refresh();
+      setTimeout(() => {
+        if (queue.status !== "scheduled" || wasSent(copy)) {
+          if (wasSent(copy)) queue.status = "sent";
+          queue.refresh?.();
+          return;
+        }
+        queue.status = "sending";
+        queue.refresh?.();
+        Promise.resolve().then(() => send({ message: copy.body })).then(() => {
+          queue.status = "sent";
+          try { window.localStorage.setItem(sentStorageKey(copy), "sent"); } catch (error) {
+            console.error("[SecullumWidget] Não foi possível persistir a trava de reenvio", error);
+          }
+        }, (error) => {
+          queue.status = "error";
+          console.error("[SecullumWidget] Falha ao enviar mensagem para atendente", error);
+        }).finally(() => queue.refresh?.());
+      }, AGENT_REPLY_DELAY_MS);
+    }
+  };
   window.__SecullumCommentBodies ||= new Set();
   window.__SecullumIsCommentPreview = (conversation) => {
     if (conversation?.last_message_type === "comment" || conversation?.last_message?.type === "comment") return true;
@@ -104,7 +166,7 @@
       source = injectOnce(
         source,
         'Le=({messages:e,loading:t=!1,loadingMore:n=!1,hasMoreMessages:r=!1,isTyping:i=!1,primaryColor:o,onLoadMore:a,onSelectOption:s,onRetryMessage:l,footer:c,optionsLocked:u=!1})=>{const',
-        'Le=({messages:e,loading:t=!1,loadingMore:n=!1,hasMoreMessages:r=!1,isTyping:i=!1,primaryColor:o,onLoadMore:a,onSelectOption:s,onRetryMessage:l,footer:c,optionsLocked:u=!1,onSendMessage:z})=>{e=e.filter(e=>{if("comment"!==e.type)return!0;"string"==typeof e.body&&window.__SecullumCommentBodies.add(e.body);return!1});e=e.flatMap(e=>{if(!e.out&&"string"==typeof e.body){const t=e.body.indexOf("Olá, a assistente virtual me orientou a enviar esta mensagem para detalhar " + "o caso.");if(t>=0){const n=e.body.slice(0,t),r={...e,type:"secullum-agent-copy",body:e.body.slice(t),id:(e.id||e._id||"secullum-agent-copy")+"-copy"};return n.trim()?[{...e,body:n},r]:[r]}}return[e]});const',
+        'Le=({messages:e,loading:t=!1,loadingMore:n=!1,hasMoreMessages:r=!1,isTyping:i=!1,primaryColor:o,onLoadMore:a,onSelectOption:s,onRetryMessage:l,footer:c,optionsLocked:u=!1,onSendMessage:z})=>{e=e.filter(e=>{if("comment"!==e.type)return!0;"string"==typeof e.body&&window.__SecullumCommentBodies.add(e.body);return!1});e=e.flatMap(e=>{if(!e.out&&"string"==typeof e.body){const t=e.body.indexOf("Olá, a assistente virtual me orientou a enviar esta mensagem para detalhar " + "o caso.");if(t>=0){const n=e.body.slice(0,t),r={...e,type:"secullum-agent-copy",body:e.body.slice(t),id:(e.id||e._id||"secullum-agent-copy")+"-copy"};return n.trim()?[{...e,body:n},r]:[r]}}return[e]});const[__secullumRevision,__secullumRefresh]=(0,x.useState)(0);(0,x.useEffect)(()=>{window.__SecullumObserveAgentMessages(e,z,()=>__secullumRefresh(e=>e+1))},[e,z]);const',
       );
       source = injectOnce(
         source,
@@ -114,7 +176,7 @@
       source = injectOnce(
         source,
         'Se=({message:e,primaryColor:t,onSelectOption:n,onRetry:r,optionsEnabled:i=!0})=>{const{t:o}=S(),',
-        'Se=({message:e,primaryColor:t,onSelectOption:n,onRetry:r,onSendToAgent:__secullumSend,optionsEnabled:i=!0})=>{if("secullum-agent-copy"===e.type){const __secullumText=e.body,__secullumButtonStyle={padding:"7px 10px",border:"1px solid #d1d5db",borderRadius:"6px",background:"white",color:"#293239",fontSize:"13px",fontWeight:500,fontFamily:"Be Vietnam Pro, sans-serif",lineHeight:"18px",cursor:"pointer"},__secullumSendButtonStyle={...__secullumButtonStyle,background:t,color:"white",borderColor:t};return(0,w.jsxs)("div",{style:{display:"flex",justifyContent:"flex-start",marginBottom:"12px"},children:[(0,w.jsx)("div",{style:{maxWidth:"75%",border:"1px dashed #cbd5e1",borderRadius:8,borderTopLeftRadius:2,padding:"12px",backgroundColor:"#f8fafc",color:"#293239",fontSize:"14px",lineHeight:"20px",whiteSpace:"pre-wrap",wordBreak:"break-word"},children:[(0,w.jsx)("div",{style:{fontSize:"12px",fontWeight:600,color:"#475569",marginBottom:"6px"},children:"Mensagem para enviar"}),(0,w.jsx)("div",{children:__secullumText}),(0,w.jsxs)("div",{style:{display:"flex",gap:"8px",marginTop:"10px",flexWrap:"wrap"},children:[(0,w.jsx)("button",{type:"button",style:__secullumButtonStyle,onClick:async e=>{const button=e.currentTarget;try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(__secullumText);else{const area=document.createElement("textarea");area.value=__secullumText;area.style.position="fixed";area.style.opacity="0";document.body.appendChild(area);area.select();try{if(!document.execCommand("copy"))throw Error("Clipboard indisponível")}finally{area.remove()}}button.textContent="Copiado";setTimeout(()=>{button.textContent="Copiar texto"},1500)}catch(error){console.error("[SecullumWidget] Falha ao copiar mensagem",error)}},children:"Copiar texto"}),(0,w.jsx)("button",{type:"button",style:__secullumSendButtonStyle,onClick:async e=>{const button=e.currentTarget;button.disabled=!0;button.textContent="Enviando...";try{if(typeof __secullumSend!=="function")throw Error("Envio indisponível");await __secullumSend({message:__secullumText});button.textContent="Enviado"}catch(error){console.error("[SecullumWidget] Falha ao enviar mensagem",error);button.disabled=!1;button.textContent="Enviar para atendente"}},children:"Enviar para atendente"})]})]})]})}const{t:o}=S(),',
+        'Se=({message:e,primaryColor:t,onSelectOption:n,onRetry:r,onSendToAgent:__secullumSend,optionsEnabled:i=!0})=>{if("secullum-agent-copy"===e.type){const __secullumText=e.body,__secullumButtonStyle={padding:"7px 10px",border:"1px solid #d1d5db",borderRadius:"6px",background:"white",color:"#293239",fontSize:"13px",fontWeight:500,fontFamily:"Be Vietnam Pro, sans-serif",lineHeight:"18px",cursor:"pointer"},__secullumSendButtonStyle={...__secullumButtonStyle,background:t,color:"white",borderColor:t};return(0,w.jsxs)("div",{style:{display:"flex",justifyContent:"flex-start",marginBottom:"12px"},children:[(0,w.jsx)("div",{style:{maxWidth:"75%",border:"1px dashed #cbd5e1",borderRadius:8,borderTopLeftRadius:2,padding:"12px",backgroundColor:"#f8fafc",color:"#293239",fontSize:"14px",lineHeight:"20px",whiteSpace:"pre-wrap",wordBreak:"break-word"},children:[(0,w.jsx)("div",{style:{fontSize:"12px",fontWeight:600,color:"#475569",marginBottom:"6px"},children:"Mensagem para enviar"}),(0,w.jsx)("div",{children:__secullumText}),(0,w.jsxs)("div",{style:{display:"flex",gap:"8px",marginTop:"10px",flexWrap:"wrap"},children:[(0,w.jsx)("button",{type:"button",style:__secullumButtonStyle,onClick:async e=>{const button=e.currentTarget;try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(__secullumText);else{const area=document.createElement("textarea");area.value=__secullumText;area.style.position="fixed";area.style.opacity="0";document.body.appendChild(area);area.select();try{if(!document.execCommand("copy"))throw Error("Clipboard indisponível")}finally{area.remove()}}button.textContent="Copiado";setTimeout(()=>{button.textContent="Copiar texto"},1500)}catch(error){console.error("[SecullumWidget] Falha ao copiar mensagem",error)}},children:"Copiar texto"}),"idle"===window.__SecullumAgentStatus(e)?(0,w.jsx)("button",{type:"button",style:__secullumSendButtonStyle,onClick:()=>window.__SecullumQueueAgentMessage(e),children:"Enviar para atendente"}):"waiting"===window.__SecullumAgentStatus(e)?(0,w.jsxs)("div",{role:"status","aria-live":"polite",style:{display:"flex",alignItems:"flex-start",gap:"10px",flexBasis:"100%",boxSizing:"border-box",padding:"12px",border:"1px solid #bfdbfe",borderRadius:"8px",background:"#eff6ff",color:"#1e40af",whiteSpace:"normal"},children:[(0,w.jsx)("svg",{width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:1.7,strokeLinecap:"round",strokeLinejoin:"round","aria-hidden":true,style:{flexShrink:0,marginTop:"1px"},children:[(0,w.jsx)("circle",{cx:12,cy:12,r:9}),(0,w.jsx)("path",{d:"M12 7v5l3 2"})]}),(0,w.jsxs)("div",{style:{minWidth:0},children:[(0,w.jsx)("div",{style:{fontSize:"13px",fontWeight:600,lineHeight:"20px"},children:"Aguardando atendente"}),(0,w.jsx)("div",{style:{fontSize:"12px",fontWeight:400,lineHeight:"18px",marginTop:"2px",color:"#475569"},children:"Sua mensagem será enviada automaticamente assim que um atendente responder."})]})]}):(0,w.jsx)("span",{role:"status",style:{fontSize:"12px",color:"#475569"},children:({scheduled:"Atendente respondeu. Enviando em instantes...",waiting:"Será enviada quando o chat for assumido",sending:"Enviando...",sent:"Enviado",error:"Falha ao enviar. Copie o texto para enviar manualmente."})[window.__SecullumAgentStatus(e)]})]})]})]})}const{t:o}=S(),',
       );
       source = injectOnce(
         source,
