@@ -1,8 +1,25 @@
 # Instruções para `js/`
 
-- Nunca altere `../widget.js`. Ele é a base do widget e deve permanecer intacto para servir de referência a futuras mudanças.
-- Implemente ajustes específicos desta integração em `widget-script.js`, como injeções no bundle obtido pela URL oficial.
-- Para ocultar conteúdo, prefira filtrar na camada de renderização do bundle injetado quando isso preservar estado, paginação e eventos recebidos.
-- Preserve a verificação de integridade do bundle remoto. Faça a injeção falhar de forma explícita se os trechos esperados não forem encontrados exatamente uma vez; revise a nova distribuição antes de atualizar os anchors ou o hash.
-- `teste-local.html` deve carregar `./widget-script.js` para testar o caminho de injeção. Não carregue `../widget.js` diretamente nessa página.
-- Para testar no localhost com `js/` como diretório atual, execute `python -m http.server 8000` dentro de `js/` e abra `/teste-local.html`.
+## Arquivos e responsabilidade
+
+- `../widget.js` é a distribuição-base do widget. Nunca o edite; use-o apenas como referência.
+- `widget-script.js` é o único ponto para personalizações desta integração. Ele baixa o bundle oficial, injeta alterações e executa o resultado.
+- `teste-local.html` deve carregar somente `./widget-script.js`, para validar o mesmo caminho usado em produção.
+
+## Regras para injeções
+
+- Preserve o carregamento do bundle oficial e a validação de integridade existente.
+- Cada injeção deve usar um anchor exato e único. Se o trecho não existir ou aparecer mais de uma vez, a injeção deve falhar explicitamente e carregar o widget vanilla.
+- Ao inserir código antes de uma declaração minificada, inclua a declaração completa no anchor. Por exemplo, não injete código procurando apenas `Se=` quando o bundle contém `var Se=`; isso pode produzir `var const ...` inválido.
+- Depois de atualizar o bundle oficial, confira todos os anchors e revise a injeção antes de alterar qualquer anchor ou hash.
+- Não implemente funcionalidades no bundle-base nem adicione recursos fora do escopo solicitado.
+
+## Teste local
+
+Com `js/` como diretório atual:
+
+```powershell
+python -m http.server 8000
+```
+
+Abra `http://localhost:8000/teste-local.html` e verifique o console do navegador. Mensagens de fallback indicam que algum anchor não correspondeu ao bundle remoto.
