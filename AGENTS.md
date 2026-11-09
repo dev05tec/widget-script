@@ -13,6 +13,7 @@
 - Ao inserir código antes de uma declaração minificada, inclua a declaração completa no anchor. Por exemplo, não injete código procurando apenas `Se=` quando o bundle contém `var Se=`; isso pode produzir `var const ...` inválido.
 - Depois de atualizar o bundle oficial, confira todos os anchors e revise a injeção antes de alterar qualquer anchor ou hash.
 - Não implemente funcionalidades no bundle-base nem adicione recursos fora do escopo solicitado.
+- Conteúdo externo expandido dentro da mensagem deve ficar restrito às mensagens recebidas do atendente ou da IA e usar `iframe` com `sandbox`; não habilite execução ou navegação irrestrita sem necessidade.
 
 ## Teste local
 
