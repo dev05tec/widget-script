@@ -364,7 +364,7 @@
         style.textContent = `
           @keyframes secullum-launcher-pulse {
             0%, 100% { filter: brightness(1) drop-shadow(0 0 0 rgba(96,165,250,0)); }
-            50% { filter: brightness(1.18) drop-shadow(0 0 9px rgba(96,165,250,.7)); }
+            50% { filter: brightness(1.08) drop-shadow(0 0 7px rgba(96,165,250,.4)); }
           }
           @media (prefers-reduced-motion: reduce) {
             [data-secullum-launcher] { animation: none !important; }
@@ -412,13 +412,13 @@
         currentButton.style.setProperty("border-radius", "50%", "important");
         currentButton.style.setProperty(
           "background",
-          "linear-gradient(135deg, #60a5fa 0%, #2563eb 48%, #1d4ed8 100%)",
+          "linear-gradient(135deg, #3b82f6 0%, #2563eb 48%, #1d4ed8 100%)",
           "important",
         );
         currentButton.style.setProperty("border", "1px solid rgba(255,255,255,.95)", "important");
         currentButton.style.setProperty(
           "box-shadow",
-          "0 8px 24px rgba(37,99,235,.3), 0 0 14px rgba(96,165,250,.35)",
+          "0 8px 24px rgba(37,99,235,.3), 0 0 10px rgba(96,165,250,.2)",
           "important",
         );
         currentButton.style.setProperty(
