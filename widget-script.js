@@ -344,6 +344,256 @@
     }, 100);
   };
 
+  // Destaca o launcher quando o widget está fechado, mantendo o clique no botão original.
+  const initializeFloatingLauncher = () => {
+    const startedAt = Date.now();
+    const waitForWidget = setInterval(() => {
+      const root = document.querySelector("#tiflux-widget-root");
+      const shadow = root?.shadowRoot;
+      const button = shadow?.querySelector("#tiflux-widget-app > button");
+
+      if (!button) {
+        if (Date.now() - startedAt >= 30000) clearInterval(waitForWidget);
+        return;
+      }
+
+      clearInterval(waitForWidget);
+      if (!shadow.querySelector("[data-secullum-launcher-style]")) {
+        const style = document.createElement("style");
+        style.dataset.secullumLauncherStyle = "true";
+        style.textContent = `
+          @keyframes secullum-launcher-pulse {
+            0%, 100% { filter: brightness(1) drop-shadow(0 0 0 rgba(96,165,250,0)); }
+            50% { filter: brightness(1.18) drop-shadow(0 0 9px rgba(96,165,250,.7)); }
+          }
+          @media (prefers-reduced-motion: reduce) {
+            [data-secullum-launcher] { animation: none !important; }
+          }
+          [data-secullum-launcher-label]:hover {
+            transform: translate(-3px,-50%) scale(1.04) !important;
+            box-shadow: 0 6px 16px rgba(37,99,235,.16);
+          }
+          #tiflux-widget-app > button:hover {
+            transform: scale(1.08) !important;
+          }
+          #tiflux-widget-app:has(+ [data-secullum-launcher-label]:hover) > button {
+            transform: scale(1.03) !important;
+          }
+          [data-secullum-launcher-label] [data-secullum-launcher-close] {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: scale(.8);
+            transition: opacity .18s ease, transform .18s ease, background-color .18s ease;
+          }
+          [data-secullum-launcher-label]:hover [data-secullum-launcher-close],
+          [data-secullum-launcher-close]:focus-visible {
+            opacity: 1 !important;
+            pointer-events: auto !important;
+            transform: scale(1);
+          }
+          [data-secullum-launcher-close]:hover {
+            background: #1d4ed8 !important;
+            color: #ffffff !important;
+          }
+        `;
+        shadow.appendChild(style);
+      }
+      let observer;
+      const syncLauncher = () => {
+        observer?.disconnect();
+        const currentButton = shadow.querySelector("#tiflux-widget-app > button");
+        if (!currentButton) return;
+        const isOpen = /fechar|close/i.test(currentButton.getAttribute("aria-label") || "");
+
+        currentButton.dataset.secullumLauncher = "true";
+        currentButton.title = isOpen ? "Recolher atendimento" : "Clique para falar com a nossa equipe";
+        currentButton.style.setProperty("width", "58px", "important");
+        currentButton.style.setProperty("height", "58px", "important");
+        currentButton.style.setProperty("border-radius", "50%", "important");
+        currentButton.style.setProperty(
+          "background",
+          "linear-gradient(135deg, #60a5fa 0%, #2563eb 48%, #1d4ed8 100%)",
+          "important",
+        );
+        currentButton.style.setProperty("border", "1px solid rgba(255,255,255,.95)", "important");
+        currentButton.style.setProperty(
+          "box-shadow",
+          "0 8px 24px rgba(37,99,235,.3), 0 0 14px rgba(96,165,250,.35)",
+          "important",
+        );
+        currentButton.style.setProperty(
+          "animation",
+          isOpen ? "none" : "secullum-launcher-pulse 5.5s ease-in-out infinite",
+          "important",
+        );
+        currentButton.style.setProperty("transition", "transform .28s ease", "important");
+        currentButton.style.setProperty("overflow", "visible", "important");
+        currentButton.style.setProperty("z-index", "2", "important");
+        currentButton.querySelectorAll("svg, svg *").forEach((icon) => {
+          icon.style.setProperty("color", "#ffffff", "important");
+          icon.style.setProperty("stroke", "#ffffff", "important");
+        });
+
+        let label = shadow.querySelector("[data-secullum-launcher-label]");
+        if (!label) {
+          label = document.createElement("span");
+          label.dataset.secullumLauncherLabel = "true";
+          label.setAttribute("aria-hidden", "true");
+          label.addEventListener("click", (event) => event.stopPropagation());
+          shadow.appendChild(label);
+        }
+        let message = label.querySelector("[data-secullum-launcher-message]");
+        if (!message) {
+          label.textContent = "";
+          const content = document.createElement("span");
+          content.dataset.secullumLauncherContent = "true";
+          content.style.cssText = "position:relative;display:inline-flex;align-items:center;";
+          message = document.createElement("span");
+          message.dataset.secullumLauncherMessage = "true";
+          message.textContent = "Fale com a gente!";
+          content.appendChild(message);
+
+          const close = document.createElement("button");
+          close.type = "button";
+          close.dataset.secullumLauncherClose = "true";
+          close.setAttribute("aria-label", "Fechar mensagem");
+          close.textContent = "×";
+          close.style.cssText = [
+            "display:inline-flex",
+            "align-items:center",
+            "justify-content:center",
+            "width:20px",
+            "height:20px",
+            "position:absolute",
+            "left:-22px",
+            "top:-15px",
+            "margin:0",
+            "padding:0",
+            "border:1px solid rgba(255,255,255,.9)",
+            "border-radius:50%",
+            "background:#2563eb",
+            "color:#ffffff",
+            "font:400 17px/18px Arial,sans-serif",
+            "cursor:pointer",
+            "user-select:none",
+            "pointer-events:none",
+            "opacity:0",
+            "transform:scale(.8)",
+            "z-index:3",
+            "box-shadow:0 2px 6px rgba(15,23,42,.14)",
+            "transition:opacity .18s ease, transform .18s ease, background-color .18s ease",
+          ].join(";");
+          close.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            label.dataset.secullumDismissed = "true";
+            label.style.setProperty("opacity", "0", "important");
+            label.style.setProperty("visibility", "hidden", "important");
+          });
+          content.appendChild(close);
+          label.appendChild(content);
+        }
+        const dismissed = label.dataset.secullumDismissed === "true";
+        label.style.cssText = [
+          "position:fixed",
+          "left:0",
+          "top:0",
+          "right:auto",
+          `transform:translate(${isOpen ? "4px" : "0"},-50%)`,
+          "transition:opacity .4s cubic-bezier(.22,.61,.36,1), transform .4s cubic-bezier(.22,.61,.36,1), visibility .4s ease",
+          "padding:9px 13px",
+          "border-radius:14px 14px 4px 14px",
+          "background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%)",
+          "color:#1f2937",
+          "font:400 13px/1 Arial,sans-serif",
+          "font-weight:400",
+          "letter-spacing:.1px",
+          "white-space:nowrap",
+          "user-select:none",
+          "display:inline-flex",
+          "align-items:center",
+          "border:1px solid rgba(37,99,235,.1)",
+          "box-shadow:0 4px 11px rgba(15,23,42,.11)",
+          "pointer-events:auto",
+          "z-index:10000",
+          "will-change:opacity,transform",
+          `opacity:${isOpen || dismissed ? "0" : "1"}`,
+          `visibility:${isOpen || dismissed ? "hidden" : "visible"}`,
+        ].join(";");
+        const buttonRect = currentButton.getBoundingClientRect();
+        label.style.setProperty(
+          "left",
+          `${Math.max(8, buttonRect.left - label.offsetWidth - 12)}px`,
+          "important",
+        );
+        label.style.setProperty("top", `${buttonRect.top + buttonRect.height / 2}px`, "important");
+
+        label.dataset.secullumOpen = String(isOpen);
+
+        if (!label._secullumRotationTimer) {
+          const messages = [
+            "Precisa de ajuda?",
+            "Tem alguma dúvida?",
+            "Fale com a gente!",
+            "Estamos aqui para ajudar!",
+          ];
+          const repositionLabel = () => {
+            const rect = currentButton.getBoundingClientRect();
+            label.style.setProperty(
+              "left",
+              `${Math.max(8, rect.left - label.offsetWidth - 12)}px`,
+              "important",
+            );
+            label.style.setProperty("top", `${rect.top + rect.height / 2}px`, "important");
+          };
+          let messageIndex = 0;
+          label._secullumRotationTimer = setInterval(() => {
+            if (!label.isConnected) {
+              clearInterval(label._secullumRotationTimer);
+              return;
+            }
+            if (/fechar|close/i.test(currentButton.getAttribute("aria-label") || "")) return;
+            const fadeOut = message.animate([{ opacity: "1" }, { opacity: "0" }], {
+              duration: 220,
+              easing: "ease",
+              fill: "forwards",
+            });
+            fadeOut.onfinish = () => {
+              messageIndex = (messageIndex + 1) % messages.length;
+              message.textContent = messages[messageIndex];
+              repositionLabel();
+              message.animate([{ opacity: "0" }, { opacity: "1" }], {
+                duration: 220,
+                easing: "ease",
+                fill: "forwards",
+              });
+            };
+          }, 10000);
+        }
+
+        observer?.observe(shadow, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["style", "class", "aria-label"],
+        });
+      };
+
+      observer = new MutationObserver((mutations) => {
+        const currentLabel = shadow.querySelector("[data-secullum-launcher-label]");
+        if (currentLabel && mutations.every(({ target }) => currentLabel === target || currentLabel.contains(target))) return;
+        syncLauncher();
+      });
+      observer.observe(shadow, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["style", "class", "aria-label"],
+      });
+      syncLauncher();
+    }, 100);
+  };
+
   // Configura o chat.
   const initialize = async () => {
     let layoutStyle;
@@ -378,6 +628,7 @@
         window.TifluxWidget.init(window.TifluxWidgetConfig);
       }
       if (options.layout === "expanded") initializeExpandedLayout(layoutStyle);
+      initializeFloatingLauncher();
       // Coloca um símbolo discreto no centro da borda superior do painel do widget.
       const addLocalMarker = setInterval(() => {
         const root = document.querySelector("#tiflux-widget-root");
