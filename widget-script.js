@@ -8,6 +8,10 @@
   // `?.` (optional chaining) só lê dataset se currentScript existir. `|| {}` fornece
   // um objeto vazio como alternativa e `...` copia os atributos para um objeto próprio.
   const options = { ...(document.currentScript?.dataset || {}) };
+  // CONFIGURAÇÃO: troque para false para desativar TODAS as personalizações (injeções no bundle,
+  // botão/balão estilizados, animações, layout expandido) e carregar o widget oficial sem alterações.
+  // Também dá para desativar por página com data-extensions="false" na tag do script.
+  const ENABLE_EXTENSIONS = options.extensions !== undefined ? options.extensions !== "false" : true;
   const state = { initialized: false };
   // A fila acompanha mensagens renderizadas, inclusive as recebidas por eventos.
   // Só o clique arma a fila; mensagens já presentes nesse momento são histórico.
@@ -107,7 +111,7 @@
       return Promise.reject(new Error("O widget oficial já foi carregado. Remova a tag duplicada e recarregue a página."));
     }
     const loadVanillaWidget = (reason) => {
-      console.warn("[SecullumWidget] As personalizações locais falharam; carregando o widget vanilla do Tiflux.", reason);
+      if (ENABLE_EXTENSIONS) console.warn("[SecullumWidget] As personalizações locais falharam; carregando o widget vanilla do Tiflux.", reason);
       return new Promise((resolve, reject) => {
         const loader = document.createElement("script");
         loader.src = TIFLUX_SCRIPT_URL;
@@ -135,6 +139,7 @@
         document.head.appendChild(loader);
       });
     };
+    if (!ENABLE_EXTENSIONS) return loadVanillaWidget("extensões desativadas por configuração");
     return (async () => {
       let response;
       try {
@@ -362,28 +367,119 @@
         const style = document.createElement("style");
         style.dataset.secullumLauncherStyle = "true";
         style.textContent = `
-          @keyframes secullum-launcher-pulse {
-            0%, 100% { filter: brightness(1) drop-shadow(0 0 0 rgba(96,165,250,0)); }
-            50% { filter: brightness(1.08) drop-shadow(0 0 7px rgba(96,165,250,.4)); }
+          @keyframes secullum-launcher-pop {
+            0% { opacity: 0; scale: .3; rotate: -25deg; }
+            60% { opacity: 1; scale: 1.12; rotate: 4deg; }
+            100% { opacity: 1; scale: 1; rotate: 0deg; }
           }
-          @media (prefers-reduced-motion: reduce) {
-            [data-secullum-launcher] { animation: none !important; }
+          @keyframes secullum-launcher-ring {
+            0% { transform: scale(1); opacity: .4; }
+            35%, 100% { transform: scale(1.6); opacity: 0; }
+          }
+          @keyframes secullum-icon-in {
+            from { opacity: 0; transform: scale(.4) rotate(-90deg); }
+            to { opacity: 1; transform: scale(1) rotate(0); }
+          }
+          @keyframes secullum-label-in {
+            from { opacity: 0; translate: 14px 0; scale: .92; }
+            to { opacity: 1; translate: 0 0; scale: 1; }
+          }
+          @keyframes secullum-panel-in {
+            from { opacity: 0; translate: 0 18px; scale: .94; }
+            to { opacity: 1; translate: 0 0; scale: 1; }
+          }
+
+          #tiflux-widget-app > button[data-secullum-launcher] {
+            background: linear-gradient(145deg, #60a5fa 0%, #2563eb 55%, #1e40af 100%) !important;
+            border: 1px solid rgba(255,255,255,.85) !important;
+            box-shadow:
+              0 10px 28px rgba(37,99,235,.38),
+              0 3px 8px rgba(30,64,175,.25),
+              inset 0 1px 1px rgba(255,255,255,.45) !important;
+            transform: none !important;
+            transition: transform .7s cubic-bezier(.34,1.4,.64,1), box-shadow .5s ease, filter .5s ease !important;
+            animation: secullum-launcher-pop 1.1s cubic-bezier(.34,1.56,.64,1) backwards !important;
+            -webkit-tap-highlight-color: transparent;
+            isolation: isolate;
+          }
+          #tiflux-widget-app > button[data-secullum-launcher]::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            background: rgba(59,130,246,.55);
+            z-index: -1;
+            pointer-events: none;
+            animation: secullum-launcher-ring 9s ease-out 3s infinite;
+          }
+          #tiflux-widget-app > button[data-secullum-launcher]:hover {
+            transform: scale(1.1) !important;
+            filter: brightness(1.06) saturate(1.1);
+            box-shadow:
+              0 14px 34px rgba(37,99,235,.5),
+              0 0 0 6px rgba(96,165,250,.22),
+              inset 0 1px 1px rgba(255,255,255,.5) !important;
+          }
+          #tiflux-widget-app > button[data-secullum-launcher]:active {
+            transform: scale(.93) !important;
+            transition-duration: .25s !important;
+          }
+          #tiflux-widget-app > button[data-secullum-launcher]:focus-visible {
+            outline: 3px solid rgba(147,197,253,.9) !important;
+            outline-offset: 3px;
+          }
+          #tiflux-widget-app > button[data-secullum-launcher] > svg {
+            animation: secullum-icon-in .7s cubic-bezier(.34,1.56,.64,1) backwards;
+            filter: drop-shadow(0 1px 2px rgba(15,23,42,.25));
+            transition: transform .6s cubic-bezier(.34,1.4,.64,1);
+          }
+          #tiflux-widget-app > button[data-secullum-launcher]:hover > svg {
+            transform: scale(1.08) rotate(-6deg);
+          }
+          #tiflux-widget-app > button[data-secullum-launcher][data-secullum-open="true"] {
+            animation: none !important;
+          }
+          #tiflux-widget-app > button[data-secullum-launcher][data-secullum-open="true"]::before {
+            animation: none !important;
+            opacity: 0;
+          }
+
+          #tiflux-widget-app > div {
+            animation: secullum-panel-in .7s cubic-bezier(.22,1,.36,1) backwards;
+            transform-origin: bottom right;
+            border-radius: 16px;
+            box-shadow: 0 18px 48px rgba(37,99,235,.18), 0 4px 14px rgba(15,23,42,.1);
+          }
+
+          [data-secullum-launcher-label] {
+            animation: secullum-label-in .9s cubic-bezier(.22,1,.36,1) 1.4s backwards;
+          }
+          [data-secullum-launcher-label]::after {
+            content: "";
+            position: absolute;
+            right: -5px;
+            top: 50%;
+            width: 10px;
+            height: 10px;
+            margin-top: -5px;
+            background: #f8fbff;
+            border-top: 1px solid rgba(37,99,235,.12);
+            border-right: 1px solid rgba(37,99,235,.12);
+            transform: rotate(45deg);
+            border-radius: 0 3px 0 0;
           }
           [data-secullum-launcher-label]:hover {
-            transform: translate(-3px,-50%) scale(1.04) !important;
-            box-shadow: 0 6px 16px rgba(37,99,235,.16);
-          }
-          #tiflux-widget-app > button:hover {
-            transform: scale(1.08) !important;
+            transform: translate(-3px,50%) scale(1.03) !important;
+            box-shadow: 0 10px 24px rgba(37,99,235,.22) !important;
           }
           #tiflux-widget-app:has(+ [data-secullum-launcher-label]:hover) > button {
-            transform: scale(1.03) !important;
+            transform: scale(1.05) !important;
           }
           [data-secullum-launcher-label] [data-secullum-launcher-close] {
             opacity: 0 !important;
             pointer-events: none !important;
             transform: scale(.8);
-            transition: opacity .18s ease, transform .18s ease, background-color .18s ease;
+            transition: opacity .3s ease, transform .35s ease, background-color .3s ease;
           }
           [data-secullum-launcher-label]:hover [data-secullum-launcher-close],
           [data-secullum-launcher-close]:focus-visible {
@@ -394,6 +490,39 @@
           [data-secullum-launcher-close]:hover {
             background: #1d4ed8 !important;
             color: #ffffff !important;
+          }
+
+          #tiflux-widget-app > div button:not([data-secullum-launcher-close]),
+          #tiflux-widget-app > div [role="button"],
+          #tiflux-widget-app > div a {
+            transition: filter .35s ease, scale .4s cubic-bezier(.34,1.4,.64,1), background-color .35s ease, border-color .35s ease, box-shadow .35s ease, opacity .35s ease;
+          }
+          #tiflux-widget-app > div button:not(:disabled):hover,
+          #tiflux-widget-app > div [role="button"]:hover {
+            filter: brightness(.96);
+            scale: 1.03;
+          }
+          #tiflux-widget-app > div button:not(:disabled):active,
+          #tiflux-widget-app > div [role="button"]:active {
+            scale: .96;
+          }
+          #tiflux-widget-app > div input,
+          #tiflux-widget-app > div textarea,
+          #tiflux-widget-app > div [contenteditable] {
+            transition: border-color .35s ease, box-shadow .35s ease, background-color .35s ease;
+          }
+          #tiflux-widget-app > div input:focus,
+          #tiflux-widget-app > div textarea:focus,
+          #tiflux-widget-app > div [contenteditable]:focus {
+            box-shadow: 0 0 0 3px rgba(59,130,246,.2);
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            #tiflux-widget-app *, [data-secullum-launcher-label],
+            #tiflux-widget-app > button[data-secullum-launcher]::before {
+              animation: none !important;
+              transition-duration: .01ms !important;
+            }
           }
         `;
         shadow.appendChild(style);
@@ -407,26 +536,10 @@
 
         currentButton.dataset.secullumLauncher = "true";
         currentButton.title = isOpen ? "Recolher atendimento" : "Clique para falar com a nossa equipe";
-        currentButton.style.setProperty("width", "58px", "important");
-        currentButton.style.setProperty("height", "58px", "important");
+        currentButton.style.setProperty("width", "60px", "important");
+        currentButton.style.setProperty("height", "60px", "important");
         currentButton.style.setProperty("border-radius", "50%", "important");
-        currentButton.style.setProperty(
-          "background",
-          "linear-gradient(135deg, #3b82f6 0%, #2563eb 48%, #1d4ed8 100%)",
-          "important",
-        );
-        currentButton.style.setProperty("border", "1px solid rgba(255,255,255,.95)", "important");
-        currentButton.style.setProperty(
-          "box-shadow",
-          "0 8px 24px rgba(37,99,235,.3), 0 0 10px rgba(96,165,250,.2)",
-          "important",
-        );
-        currentButton.style.setProperty(
-          "animation",
-          isOpen ? "none" : "secullum-launcher-pulse 5.5s ease-in-out infinite",
-          "important",
-        );
-        currentButton.style.setProperty("transition", "transform .28s ease", "important");
+        currentButton.dataset.secullumOpen = String(isOpen);
         currentButton.style.setProperty("overflow", "visible", "important");
         currentButton.style.setProperty("z-index", "2", "important");
         currentButton.querySelectorAll("svg, svg *").forEach((icon) => {
@@ -481,7 +594,7 @@
             "transform:scale(.8)",
             "z-index:3",
             "box-shadow:0 2px 6px rgba(15,23,42,.14)",
-            "transition:opacity .18s ease, transform .18s ease, background-color .18s ease",
+            "transition:opacity .3s ease, transform .35s ease, background-color .3s ease",
           ].join(";");
           close.addEventListener("click", (event) => {
             event.preventDefault();
@@ -496,37 +609,41 @@
         const dismissed = label.dataset.secullumDismissed === "true";
         label.style.cssText = [
           "position:fixed",
-          "left:0",
-          "top:0",
-          "right:auto",
-          `transform:translate(${isOpen ? "4px" : "0"},-50%)`,
-          "transition:opacity .4s cubic-bezier(.22,.61,.36,1), transform .4s cubic-bezier(.22,.61,.36,1), visibility .4s ease",
-          "padding:9px 13px",
-          "border-radius:14px 14px 4px 14px",
+          "left:auto",
+          "top:auto",
+          "max-width:calc(100vw - 110px)",
+          `transform:translate(${isOpen ? "4px" : "0"},50%)`,
+          "transition:opacity .6s cubic-bezier(.22,.61,.36,1), transform .6s cubic-bezier(.22,1,.36,1), box-shadow .45s ease, visibility .6s ease",
+          "padding:10px 16px",
+          "border-radius:16px",
           "background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%)",
           "color:#1f2937",
-          "font:400 13px/1 Arial,sans-serif",
-          "font-weight:400",
+          "font:500 13.5px/1 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif",
+          "font-weight:500",
           "letter-spacing:.1px",
           "white-space:nowrap",
           "user-select:none",
           "display:inline-flex",
           "align-items:center",
           "border:1px solid rgba(37,99,235,.1)",
-          "box-shadow:0 4px 11px rgba(15,23,42,.11)",
+          "box-shadow:0 8px 22px rgba(37,99,235,.16), 0 2px 6px rgba(15,23,42,.08)",
           "pointer-events:auto",
           "z-index:10000",
           "will-change:opacity,transform",
           `opacity:${isOpen || dismissed ? "0" : "1"}`,
           `visibility:${isOpen || dismissed ? "hidden" : "visible"}`,
         ].join(";");
-        const buttonRect = currentButton.getBoundingClientRect();
-        label.style.setProperty(
-          "left",
-          `${Math.max(8, buttonRect.left - label.offsetWidth - 12)}px`,
-          "important",
-        );
-        label.style.setProperty("top", `${buttonRect.top + buttonRect.height / 2}px`, "important");
+        // Usa os valores de layout (right/bottom), que não mudam com transform/animação do botão.
+        const placeLabel = () => {
+          const btn = shadow.querySelector("#tiflux-widget-app > button") || currentButton;
+          const cs = getComputedStyle(btn);
+          const right = parseFloat(cs.right) || 24;
+          const bottom = parseFloat(cs.bottom) || 24;
+          const size = btn.offsetWidth || 60;
+          label.style.setProperty("right", `${right + size + 12}px`, "important");
+          label.style.setProperty("bottom", `${bottom + (btn.offsetHeight || size) / 2}px`, "important");
+        };
+        placeLabel();
 
         label.dataset.secullumOpen = String(isOpen);
 
@@ -537,33 +654,24 @@
             "Fale com a gente!",
             "Estamos aqui para ajudar!",
           ];
-          const repositionLabel = () => {
-            const rect = currentButton.getBoundingClientRect();
-            label.style.setProperty(
-              "left",
-              `${Math.max(8, rect.left - label.offsetWidth - 12)}px`,
-              "important",
-            );
-            label.style.setProperty("top", `${rect.top + rect.height / 2}px`, "important");
-          };
           let messageIndex = 0;
           label._secullumRotationTimer = setInterval(() => {
+            placeLabel();
             if (!label.isConnected) {
               clearInterval(label._secullumRotationTimer);
               return;
             }
             if (/fechar|close/i.test(currentButton.getAttribute("aria-label") || "")) return;
             const fadeOut = message.animate([{ opacity: "1" }, { opacity: "0" }], {
-              duration: 220,
+              duration: 400,
               easing: "ease",
               fill: "forwards",
             });
             fadeOut.onfinish = () => {
               messageIndex = (messageIndex + 1) % messages.length;
               message.textContent = messages[messageIndex];
-              repositionLabel();
               message.animate([{ opacity: "0" }, { opacity: "1" }], {
-                duration: 220,
+                duration: 400,
                 easing: "ease",
                 fill: "forwards",
               });
@@ -594,6 +702,40 @@
     }, 100);
   };
 
+  // Anima a entrada de qualquer elemento novo dentro do painel (mensagens, listas, cartoes).
+  // Usa translate/scale individuais, que nao conflitam com o transform inline do bundle.
+  const initializeEnterAnimations = () => {
+    const startedAt = Date.now();
+    const wait = setInterval(() => {
+      const shadow = document.querySelector("#tiflux-widget-root")?.shadowRoot;
+      const app = shadow?.querySelector("#tiflux-widget-app");
+      if (!app) {
+        if (Date.now() - startedAt >= 30000) clearInterval(wait);
+        return;
+      }
+      clearInterval(wait);
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      new MutationObserver((mutations) => {
+        const fresh = [];
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType !== 1 || node.matches("style, [data-secullum-launcher-label]")) continue;
+            if (node.closest("[data-secullum-launcher-label], #tiflux-widget-app > button")) continue;
+            if (!node.closest("#tiflux-widget-app > div") || node.parentElement === app) continue;
+            fresh.push(node);
+          }
+        }
+        // So anima o no mais externo de cada insercao, evitando animar filhos junto do pai.
+        fresh.filter((node) => !fresh.some((other) => other !== node && other.contains(node))).forEach((node, index) => {
+          node.animate(
+            [{ opacity: 0, translate: "0 10px", scale: ".98" }, { opacity: 1, translate: "0 0", scale: "1" }],
+            { duration: 600, delay: Math.min(index, 6) * 70, easing: "cubic-bezier(.22,1,.36,1)", fill: "backwards" },
+          );
+        });
+      }).observe(app, { childList: true, subtree: true });
+    }, 100);
+  };
+
   // Configura o chat.
   const initialize = async () => {
     let layoutStyle;
@@ -614,7 +756,7 @@
         // O widget usa esta chave no armazenamento local para abrir já expandido.
         try { localStorage.setItem(`@TifluxWidget:IsOpen:${token}`, "true"); } catch {}
       }
-      if (options.layout === "expanded") {
+      if (ENABLE_EXTENSIONS && options.layout === "expanded") {
         // Evita um breve flash do widget flutuante antes de aplicar o layout expandido.
         layoutStyle = document.createElement("style");
         layoutStyle.textContent = "#tiflux-widget-root { visibility: hidden !important; }";
@@ -627,10 +769,13 @@
         if (window.TifluxWidgetConfig.identify) window.TifluxWidget.identify(window.TifluxWidgetConfig.identify);
         window.TifluxWidget.init(window.TifluxWidgetConfig);
       }
-      if (options.layout === "expanded") initializeExpandedLayout(layoutStyle);
-      initializeFloatingLauncher();
+      if (ENABLE_EXTENSIONS) {
+        if (options.layout === "expanded") initializeExpandedLayout(layoutStyle);
+        initializeFloatingLauncher();
+        initializeEnterAnimations();
+      }
       // Coloca um símbolo discreto no centro da borda superior do painel do widget.
-      const addLocalMarker = setInterval(() => {
+      const addLocalMarker = ENABLE_EXTENSIONS && setInterval(() => {
         const root = document.querySelector("#tiflux-widget-root");
         const panel = root?.shadowRoot?.querySelector("#tiflux-widget-app > div");
         if (!panel) return;
